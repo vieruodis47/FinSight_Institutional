@@ -323,7 +323,10 @@ peer_ratios = ratios.get(peer, {}) if peer else {}
 
 # Header
 st.markdown('<div class="fs-eyebrow">Institutional research / company intelligence</div>', unsafe_allow_html=True)
-st.title(f"{target}  <span style='color:#42c7b7'>/</span> Research Overview")
+st.markdown(
+    f"<h1>{target} <span style='color:#42c7b7'>/</span> Research Overview</h1>",
+    unsafe_allow_html=True,
+)
 st.markdown(
     f'<div class="fs-subtitle">Fundamental performance, market context and quantitative outlook'
     f'{" · Peer: " + peer if peer else ""}</div>',
