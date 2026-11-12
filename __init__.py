@@ -1,1 +1,0 @@
-"""FinSight analytical modules."""
