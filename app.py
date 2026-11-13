@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
@@ -27,7 +28,6 @@ from analysis.metrics import (
 from analysis.stock_data import get_all_stock_data
 from analysis.stats import (
     analyze_metric, run_monte_carlo_forecast, monte_carlo_forecast_chart,
-    run_autoreg_stock_forecast, autoreg_stock_chart,
 )
 from analysis.ridge_model import run_per_company_models, reliability_label
 from analysis.charts import (
@@ -101,6 +101,135 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+# ---------------------------------------------------------------------
+# AutoReg (statsmodels.tsa.ar_model.AutoReg) Stock Forecasting
+# ---------------------------------------------------------------------
+def run_autoreg_stock_forecast(history_df, lags=10, steps=20, trend="c"):
+    """Fit statsmodels.tsa.ar_model.AutoReg on historical closing prices."""
+    try:
+        from statsmodels.tsa.ar_model import AutoReg
+    except ImportError as exc:
+        return {"error": f"statsmodels is not installed yet ({exc}). Please reboot the app after updating requirements.txt."}
+
+    if history_df is None or history_df.empty or "Close" not in history_df:
+        return None
+
+    close = history_df["Close"].dropna().astype(float)
+    if len(close) < max(30, lags * 3):
+        return None
+
+    values = close.to_numpy()
+    dates = pd.to_datetime(close.index)
+
+    val_size = min(steps, max(5, len(values) // 10))
+    holdout_mape = None
+    holdout_rmse = None
+    if len(values) - val_size > lags + 5:
+        train_vals = values[:-val_size]
+        test_vals = values[-val_size:]
+        try:
+            val_model = AutoReg(train_vals, lags=lags, trend=trend).fit()
+            val_preds = val_model.predict(start=len(train_vals), end=len(values) - 1)
+            holdout_rmse = float(np.sqrt(np.mean((test_vals - val_preds) ** 2)))
+            nonzero = test_vals != 0
+            if np.any(nonzero):
+                holdout_mape = float(np.mean(np.abs((test_vals[nonzero] - val_preds[nonzero]) / test_vals[nonzero])) * 100)
+        except Exception:
+            pass
+
+    model_fit = AutoReg(values, lags=lags, trend=trend).fit()
+    pred_res = model_fit.get_prediction(start=len(values), end=len(values) + steps - 1)
+    forecast_mean = np.asarray(pred_res.predicted_mean, dtype=float)
+    conf_int = np.asarray(pred_res.conf_int(alpha=0.05), dtype=float)
+
+    last_date = dates[-1]
+    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=steps)
+
+    display_window = min(len(values), 90)
+    hist_dates = [d.strftime("%Y-%m-%d") for d in dates[-display_window:]]
+    hist_values = values[-display_window:].tolist()
+
+    param_names = ["const"] if trend in ("c", "ct") else []
+    if trend == "ct":
+        param_names.append("trend")
+    param_names.extend([f"Lag {i}" for i in range(1, lags + 1)])
+    params = model_fit.params
+    coef_table = [
+        {
+            "Term": param_names[idx] if idx < len(param_names) else f"Param {idx}",
+            "Coefficient": round(float(params[idx]), 6),
+            "P-value": round(float(model_fit.pvalues[idx]), 4) if idx < len(model_fit.pvalues) else None,
+        }
+        for idx in range(len(params))
+    ]
+
+    last_price = float(values[-1])
+    end_forecast = float(forecast_mean[-1])
+    expected_change_pct = ((end_forecast - last_price) / last_price) * 100 if last_price != 0 else 0.0
+
+    return {
+        "history_dates": hist_dates,
+        "history_values": hist_values,
+        "forecast_dates": [d.strftime("%Y-%m-%d") for d in future_dates],
+        "forecast_values": forecast_mean.tolist(),
+        "ci_lower": conf_int[:, 0].tolist(),
+        "ci_upper": conf_int[:, 1].tolist(),
+        "last_price": last_price,
+        "end_forecast": end_forecast,
+        "expected_change_pct": round(expected_change_pct, 2),
+        "lags": lags,
+        "steps": steps,
+        "aic": round(float(model_fit.aic), 2),
+        "bic": round(float(model_fit.bic), 2),
+        "holdout_rmse": round(holdout_rmse, 2) if holdout_rmse is not None else None,
+        "holdout_mape": round(holdout_mape, 2) if holdout_mape is not None else None,
+        "coefficients": coef_table,
+    }
+
+
+def autoreg_stock_chart(ar_result, company_name="Company"):
+    if not ar_result or "error" in ar_result:
+        return None
+
+    hist_dates = ar_result["history_dates"]
+    hist_vals = ar_result["history_values"]
+    fc_dates = [hist_dates[-1]] + ar_result["forecast_dates"]
+    fc_vals = [hist_vals[-1]] + ar_result["forecast_values"]
+    ci_upper = [hist_vals[-1]] + ar_result["ci_upper"]
+    ci_lower = [hist_vals[-1]] + ar_result["ci_lower"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=hist_dates, y=hist_vals, mode="lines",
+        name="Historical Close (Last 90d)", line=dict(color="#5B9BD5", width=2.5),
+    ))
+    fig.add_trace(go.Scatter(
+        x=fc_dates, y=ci_upper, mode="lines",
+        line=dict(width=0.5, color="rgba(66, 199, 183, 0.25)"),
+        name="95% Upper Bound", showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=fc_dates, y=ci_lower, mode="lines", fill="tonexty",
+        fillcolor="rgba(66, 199, 183, 0.16)",
+        line=dict(width=0.5, color="rgba(66, 199, 183, 0.25)"),
+        name="95% Confidence Interval",
+    ))
+    fig.add_trace(go.Scatter(
+        x=fc_dates, y=fc_vals, mode="lines+markers",
+        name=f"AutoReg({ar_result['lags']}) Forecast",
+        line=dict(color="#42C7B7", width=3, dash="dash"),
+        marker=dict(size=5, color="#42C7B7"),
+    ))
+    fig.update_layout(
+        title=f"{company_name} — AutoReg({ar_result['lags']}) Stock Price Forecast ({ar_result['steps']} Trading Days)",
+        xaxis=dict(title="Trading Date", automargin=True, tickangle=45),
+        yaxis=dict(title="Price (USD)", automargin=True),
+        template="plotly_white", hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
 
 
 # ---------------------------------------------------------------------
@@ -275,7 +404,6 @@ has_data = (
     and bool(st.session_state.get("ratio_data"))
 )
 if not has_data:
-    # Avoid silently showing data for a previously selected company after controls change.
     st.markdown('<div class="fs-eyebrow">Quantitative research workspace</div>', unsafe_allow_html=True)
     st.title("FinSight")
     st.markdown('<div class="fs-subtitle">A structured view of public-company fundamentals, market behavior and quantitative expectations.</div>', unsafe_allow_html=True)
@@ -331,8 +459,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    f'<span class="fs-pill">SEC / XBRL</span> &nbsp; <span class="fs-pill">QUANTITATIVE MODELS</span> '
-    f'&nbsp; <span class="fs-pill">PUBLIC MARKETS</span> &nbsp; '
+    f'<span class="fs-pill">SEC / XBRL</span>   <span class="fs-pill">QUANTITATIVE MODELS</span> '
+    f'  <span class="fs-pill">PUBLIC MARKETS</span>   '
     f'<span class="fs-status">● DATA LOADED</span>',
     unsafe_allow_html=True,
 )
@@ -347,7 +475,6 @@ st.markdown('<div class="fs-divider"></div>', unsafe_allow_html=True)
 
 # Executive metrics row
 revenue = latest_value(target_ratios, "revenue")
-# Revenue is stored in raw SEC facts, so resolve it by matching the latest fiscal year.
 revenue_values = target_raw.get("revenue", {}).get("values", {})
 if target_year:
     rev_for_year = next((v for k, v in revenue_values.items() if str(k)[:4] == str(target_year)[:4]), None)
@@ -474,7 +601,6 @@ with tabs[1]:
         styled_chart(fig, 380)
     with c4:
         if peer and peer_ratios:
-            # Render one current-year peer comparison per key operating metric.
             peer_bar = {
                 target: target_ratios,
                 peer: peer_ratios,
@@ -559,7 +685,9 @@ with tabs[2]:
             ar_trend = st.selectbox("Deterministic trend", ["c", "ct", "n"], index=0, format_func=lambda x: {"c": "Constant (c)", "ct": "Constant + Linear Trend (ct)", "n": "No Trend (n)"}[x], key="ar_trend")
 
         ar_result = run_autoreg_stock_forecast(target_stock.get("history"), lags=ar_lags, steps=ar_steps, trend=ar_trend)
-        if ar_result:
+        if ar_result and "error" in ar_result:
+            st.warning(ar_result["error"])
+        elif ar_result:
             k1, k2, k3, k4 = st.columns(4)
             with k1:
                 card("Last close", fmt_money(ar_result["last_price"]), "Latest trading session")
@@ -680,7 +808,7 @@ with tabs[3]:
     st.caption("LOO CV R² is calculated from pooled leave-one-out predictions. Small annual samples can produce unstable estimates; inspect sample counts and diagnostics before drawing conclusions.")
 
 # ---------------------------------------------------------------------
-# 05 Research Q&A — transparent structured lookup, not fake RAG
+# 05 Research Q&A
 # ---------------------------------------------------------------------
 with tabs[4]:
     section_header("07 / Research desk", "Structured financial Q&A",
@@ -748,8 +876,8 @@ with tabs[5]:
     st.caption("The HTML export includes the charts available in the current session. Interactive charts load Plotly from its CDN.")
 
 st.markdown(
-    f'<div class="fs-footer">FINSIGHT · INSTITUTIONAL RESEARCH TERMINAL &nbsp; / &nbsp; '
-    f'UNIVERSE: {", ".join(selected_tickers)} &nbsp; / &nbsp; '
+    f'<div class="fs-footer">FINSIGHT · INSTITUTIONAL RESEARCH TERMINAL   /   '
+    f'UNIVERSE: {", ".join(selected_tickers)}   /   '
     f'LAST RUN: {st.session_state.get("run_timestamp", "—")}</div>',
     unsafe_allow_html=True,
 )
