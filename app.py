@@ -40,6 +40,11 @@ from analysis.theme import (
     TEXT, MUTED, BLUE, TEAL, GREEN, RED, AMBER,
 )
 
+from analysis.metrics import (
+    COMPANIES, COMPANY_LABELS, get_company_metrics, calculate_ratios,
+    get_quarterly_metrics, get_industry_sector, get_metric_explanation,
+)
+
 st.set_page_config(
     page_title="FinSight | Institutional Research",
     page_icon="◈",
@@ -365,9 +370,19 @@ with st.sidebar:
         st.error("No SEC company identifiers are configured in analysis/metrics.py.")
         st.stop()
 
-    target = st.selectbox("Target company", available_tickers, index=0)
+    target = st.selectbox(
+    "Target company",
+    available_tickers,
+    index=0,
+    format_func=lambda t: COMPANY_LABELS.get(t, t),
+    )
     peer_options = ["None"] + [ticker for ticker in available_tickers if ticker != target]
-    peer_choice = st.selectbox("Comparison peer", peer_options, index=1 if len(peer_options) > 1 else 0)
+    peer_choice = st.selectbox(
+        "Comparison peer",
+        peer_options,
+        index=1 if len(peer_options) > 1 else 0,
+        format_func=lambda t: "None" if t == "None" else COMPANY_LABELS.get(t, t),
+    )
     peer = None if peer_choice == "None" else peer_choice
 
     st.markdown('<div class="fs-section-label">02 / Market data</div>', unsafe_allow_html=True)
