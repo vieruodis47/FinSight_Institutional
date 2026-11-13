@@ -25,6 +25,45 @@ from datetime import datetime
 # ============================================================
 # 1. CONFIGURATION
 # ============================================================
+COMPANIES = {
+    "GAP": "0000039911",
+    "PVH": "0000078239",
+    "AEO": "0000919012"
+}
+
+COMPANY_LABELS = {
+    "GAP": "GAP — Gap Inc.",
+    "PVH": "PVH — PVH Corp.",
+    "AEO": "AEO — American Eagle Outfitters"
+}
+
+JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'sec_companies.json')
+master_sec_data = {}
+
+if os.path.exists(JSON_PATH):
+    try:
+        with open(JSON_PATH, 'r', encoding='utf-8') as f:
+            master_sec_data = json.load(f)
+
+        company_list = master_sec_data.get("companies", [])
+        for item in company_list:
+            ticker = item.get("ticker")
+            raw_cik = item.get("cik")
+            raw_name = item.get("name") or item.get("title") or ""
+
+            if ticker and raw_cik:
+                clean_ticker = str(ticker).strip().upper()
+                digit_match = re.findall(r'\d+', str(raw_cik))
+                if digit_match:
+                    clean_cik = "".join(digit_match).zfill(10)
+                    COMPANIES[clean_ticker] = clean_cik
+                    clean_name = str(raw_name).strip().title()
+                    COMPANY_LABELS[clean_ticker] = (
+                        f"{clean_ticker} — {clean_name}" if clean_name else clean_ticker
+                    )
+    except Exception as e:
+        print(f"[Warning] Failed to read master SEC registry file, using core fallbacks: {e}")
+
 
 HEADERS = {
     "User-Agent": "FinSight Financial Research contact@example.com"
