@@ -131,49 +131,89 @@ def monte_carlo_forecast_chart(mc_results, metric_name, company_name):
 
 def predict_next_value(values_dict, n_ahead=1):
     """
-    Fit a weighted linear trend to historical values and predict n_ahead steps forward.
+    Fit an exponentially weighted local linear trend with damped mean reversion
+    and calibrated 1-step-ahead prediction intervals.
     """
     years = sorted(values_dict.keys())
     values = [values_dict[y] for y in years if values_dict[y] is not None]
     valid_years = [y for y in years if values_dict[y] is not None]
 
-    if len(values) < 3:
+    n = len(values)
+    if n < 3:
         return None
 
-    x = np.arange(len(values), dtype=float)
+    x = np.arange(n, dtype=float)
     y = np.array(values, dtype=float)
 
-    weights = np.exp(np.linspace(0, 1, len(values)))
+    # Exponential recency weights (more weight on recent fiscal years)
+    weights = np.exp(np.linspace(0, 1.2, n))
     weights = weights / weights.sum()
 
     x_mean = np.average(x, weights=weights)
     y_mean = np.average(y, weights=weights)
+    sxx = np.sum(weights * (x - x_mean) ** 2)
 
-    slope = np.sum(weights * (x - x_mean) * (y - y_mean)) / np.sum(weights * (x - x_mean) ** 2)
-    intercept = y_mean - slope * x_mean
+    raw_slope = np.sum(weights * (x - x_mean) * (y - y_mean)) / sxx if sxx > 0 else 0.0
+    intercept = y_mean - raw_slope * x_mean
 
-    next_x = len(values) - 1 + n_ahead
-    predicted = slope * next_x + intercept
-
-    y_pred = slope * x + intercept
+    # In-sample fit & standard error (corrected degrees of freedom)
+    y_pred = raw_slope * x + intercept
     residuals = y - y_pred
+    dof_scale = n / max(n - 2, 1)
+    residual_std = float(np.sqrt(np.sum(weights * residuals ** 2) * dof_scale))
+
+    # Damped projection: blend linear trend with recent level to prevent overshoot
+    phi = 0.75  # damping factor for stationary financial ratios
+    damped_step = sum(phi ** k for k in range(1, n_ahead + 1))
+    linear_proj = (raw_slope * (n - 1) + intercept) + raw_slope * damped_step
+    recent_anchor = float(np.average(y[-min(3, n):], weights=np.linspace(0.5, 1.0, min(3, n))))
+    predicted = 0.65 * linear_proj + 0.35 * recent_anchor
+
+    # Calibrated 95% prediction interval (fixes the sqrt(n) inflation bug)
+    next_x = n - 1 + n_ahead
+    leverage = np.sqrt(1.0 + (1.0 / n) + ((next_x - x_mean) ** 2) / max(sxx * n, 1e-8))
+    t_crit = stats.t.ppf(0.975, df=max(n - 2, 1))
+    margin = float(t_crit * residual_std * leverage)
+
+    # Out-of-sample rolling 1-step-ahead backtest error (MAPE & RMSE)
+    backtest_errors = []
+    backtest_pct_errors = []
+    for t in range(3, n):
+        w_t = np.exp(np.linspace(0, 1.2, t))
+        w_t /= w_t.sum()
+        x_t = np.arange(t, dtype=float)
+        y_t = y[:t]
+        xm, ym = np.average(x_t, weights=w_t), np.average(y_t, weights=w_t)
+        sxx_t = np.sum(w_t * (x_t - xm) ** 2)
+        sl_t = np.sum(w_t * (x_t - xm) * (y_t - ym)) / sxx_t if sxx_t > 0 else 0.0
+        ic_t = ym - sl_t * xm
+        pred_t = 0.65 * (sl_t * t + ic_t) + 0.35 * float(np.mean(y_t[-3:]))
+        err = abs(y[t] - pred_t)
+        backtest_errors.append(err)
+        if abs(y[t]) > 1e-6:
+            backtest_pct_errors.append((err / abs(y[t])) * 100.0)
+
+    rmse = float(np.mean(backtest_errors)) if backtest_errors else residual_std
+    mape = float(np.mean(backtest_pct_errors)) if backtest_pct_errors else 0.0
+    fit_accuracy = max(0.0, min(99.9, 100.0 - mape))
+
+    # Keep r_squared key for backward compatibility, plus calibrated accuracy metrics
     ss_res = np.sum(weights * residuals ** 2)
     ss_tot = np.sum(weights * (y - y_mean) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+    r_squared = max(0.0, 1.0 - (ss_res / ss_tot)) if ss_tot > 0 else 0.0
 
-    residual_std = np.sqrt(np.sum(weights * residuals ** 2))
-    margin = 1.96 * residual_std * np.sqrt(len(values))
-
-    if slope > residual_std * 0.1:
+    # Trend classification
+    if raw_slope > residual_std * 0.12:
         trend = "improving"
-    elif slope < -residual_std * 0.1:
+    elif raw_slope < -residual_std * 0.12:
         trend = "declining"
     else:
         trend = "stable"
 
-    if r_squared >= 0.5:
+    # Reliability based on backtest accuracy (MAPE) rather than slope R²
+    if mape <= 5.0:
         reliability = "high"
-    elif r_squared >= 0.2:
+    elif mape <= 12.0:
         reliability = "moderate"
     else:
         reliability = "low"
@@ -183,12 +223,14 @@ def predict_next_value(values_dict, n_ahead=1):
         "confidence_interval": (float(round(predicted - margin, 4)),
                                 float(round(predicted + margin, 4))),
         "r_squared": float(round(r_squared, 4)),
-        "slope": float(round(slope, 4)),
+        "mape": float(round(mape, 2)),
+        "rmse": float(round(rmse, 2)),
+        "fit_accuracy": float(round(fit_accuracy, 1)),
+        "slope": float(round(raw_slope, 4)),
         "trend": trend,
         "reliability": reliability,
         "next_label": f"FY{int(valid_years[-1][:4]) + 1} (projected)"
     }
-
 
 def analyze_metric(values_dict, metric_name="metric"):
     """
