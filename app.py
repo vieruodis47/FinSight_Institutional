@@ -541,28 +541,41 @@ target_stock = stocks.get(target, {})
 target_year = latest_year(target_ratios)
 peer_ratios = ratios.get(peer, {}) if peer else {}
 
-# Header
-st.markdown('<div class="fs-eyebrow">Institutional research / company intelligence</div>', unsafe_allow_html=True)
-st.markdown(f"<h1>{target}  <span style='color:#42c7b7'>/</span> Research Overview</h1>", unsafe_allow_html=True)
-st.markdown(
-    f'<div class="fs-subtitle">Fundamental performance, market context and quantitative outlook'
-    f'{" · Peer: " + peer if peer else ""}</div>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    f'<span class="fs-pill">SEC / XBRL</span>   <span class="fs-pill">QUANTITATIVE MODELS</span> '
-    f'  <span class="fs-pill">PUBLIC MARKETS</span>   '
-    f'<span class="fs-status">● DATA LOADED</span>',
-    unsafe_allow_html=True,
-)
-if errors:
-    for error in errors:
-        st.warning(f"Fundamental data issue — {error}")
-if target not in raw or not target_ratios:
-    st.error(f"No usable annual SEC fundamentals were returned for {target}. Check the ticker/CIK registry and SEC connectivity.")
-    st.stop()
+def get_display_name(ticker):
+    stock_name = stocks.get(ticker, {}).get("stats", {}).get("long_name")
+    if stock_name and stock_name != ticker:
+        return stock_name
+    label = COMPANY_LABELS.get(ticker, "")
+    if "—" in label:
+        return label.split("—", 1)[1].strip()
+    return ticker
 
-st.markdown('<div class="fs-divider"></div>', unsafe_allow_html=True)
+target_name = get_display_name(target)
+peer_name = get_display_name(peer) if peer else None
+company_names = {t: f"{t} ({get_display_name(t)})" for t in selected_tickers}
+
+# Header
+if peer:
+    st.markdown('<div class="fs-eyebrow">Institutional research / head-to-head comparison</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"<h1>{target} <span style='color:#ea580c'>vs.</span> {peer} "
+        f"<span style='color:#94a3b8;font-weight:600'>/ Comparative Overview</span></h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="fs-subtitle"><b>{target_name}</b> benchmarked against <b>{peer_name}</b> · Fundamentals, market behavior & quantitative outlook</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown('<div class="fs-eyebrow">Institutional research / company intelligence</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"<h1>{target} <span style='color:#ea580c'>/</span> Research Overview</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="fs-subtitle"><b>{target_name}</b> · Fundamental performance, market context & quantitative outlook</div>',
+        unsafe_allow_html=True,
+    )
 
 # Executive metrics row
 revenue = latest_value(target_ratios, "revenue")
@@ -598,6 +611,51 @@ tabs = st.tabs([
 # 01 Executive overview
 # ---------------------------------------------------------------------
 with tabs[0]:
+    section_header(
+        "00 / Company profile",
+        "Business background & sector classification",
+        "Corporate overview sourced from Yahoo Finance & SEC SIC taxonomy.",
+    )
+
+    def render_company_profile(tk, full_name, stock_dict):
+        s = stock_dict.get("stats", {})
+        sector = s.get("sector") or "N/A"
+        industry = s.get("industry") or "N/A"
+        hq = s.get("headquarters") or "N/A"
+        emp = f"{s['employees']:,}" if isinstance(s.get("employees"), (int, float)) else "N/A"
+        site = s.get("website") or ""
+        summary = s.get("summary") or "No business description available for this ticker."
+        short_summary = summary if len(summary) <= 380 else summary[:377].rsplit(" ", 1)[0] + "…"
+
+        st.markdown(
+            f"""<div class="fs-panel" style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">{full_name} <span style="color:#ea580c">({tk})</span></h3>
+                <span class="fs-pill">{sector} · {industry}</span>
+            </div>
+            <p style="color:#475569;font-size:0.88rem;line-height:1.55;margin:10px 0 12px">{short_summary}</p>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:0.78rem;color:#64748b;border-top:1px solid #e2e8f0;padding-top:10px">
+                <span><b>HQ:</b> {hq}</span>
+                <span><b>Employees:</b> {emp}</span>
+                {f'<span><b>Website:</b> <a href="{site}" target="_blank" style="color:#ea580c;text-decoration:none">{site.replace("https://","")}</a></span>' if site else ''}
+            </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if len(summary) > 380:
+            with st.expander(f"Read full {tk} business description"):
+                st.write(summary)
+
+    if peer:
+        prof_c1, prof_c2 = st.columns(2)
+        with prof_c1:
+            render_company_profile(target, target_name, target_stock)
+        with prof_c2:
+            render_company_profile(peer, peer_name, stocks.get(peer, {}))
+    else:
+        render_company_profile(target, target_name, target_stock)
+
+    st.markdown("")
     section_header("01 / Executive brief", "Operating performance at a glance",
                    "The latest available annual SEC filing is used for fundamental indicators.")
     left, right = st.columns([1.35, 1])
@@ -605,22 +663,22 @@ with tabs[0]:
         fig = revenue_vs_profit_chart(target_raw, company_name=target)
         styled_chart(fig, 410)
     with right:
-        st.markdown('<div class="fs-panel">', unsafe_allow_html=True)
-        st.markdown("#### Latest reported indicators")
-        for label, value in [
-            ("Net margin", fmt_number(net_margin, "%")),
-            ("Revenue growth", fmt_number(revenue_growth, "%")),
-            ("Inventory turnover", fmt_number(latest_value(target_ratios, "inventory_turnover"), "x")),
-            ("Debt / equity", fmt_number(latest_value(target_ratios, "debt_to_equity"), "x")),
-            ("Current ratio", fmt_number(latest_value(target_ratios, "current_ratio"), "x")),
-            ("Free cash flow", fmt_money(latest_value(target_ratios, "free_cash_flow"), True)),
-        ]:
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;border-bottom:1px solid #26364d;padding:9px 0">'
-                f'<span class="fs-muted">{label}</span><b>{value}</b></div>',
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
+        indicator_rows = "".join(
+            f'<div style="display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding:10px 0">'
+            f'<span class="fs-muted">{label}</span><b>{value}</b></div>'
+            for label, value in [
+                ("Net margin", fmt_number(net_margin, "%")),
+                ("Revenue growth", fmt_number(revenue_growth, "%")),
+                ("Inventory turnover", fmt_number(latest_value(target_ratios, "inventory_turnover"), "x")),
+                ("Debt / equity", fmt_number(latest_value(target_ratios, "debt_to_equity"), "x")),
+                ("Current ratio", fmt_number(latest_value(target_ratios, "current_ratio"), "x")),
+                ("Free cash flow", fmt_money(latest_value(target_ratios, "free_cash_flow"), True)),
+            ]
+        )
+        st.markdown(
+            f'<div class="fs-panel"><h4 style="margin:0 0 8px 0">Latest reported indicators</h4>{indicator_rows}</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("")
     section_header("02 / Peer lens", "Company comparison",
