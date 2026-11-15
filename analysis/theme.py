@@ -19,7 +19,6 @@ RED = "#DC2626"
 # Keep legacy aliases so existing imports never break
 NAVY = BG
 
-
 def apply_plotly_theme(fig, height=390):
     """Apply a crisp white & financial-orange institutional style."""
     if fig is None:
@@ -29,9 +28,9 @@ def apply_plotly_theme(fig, height=390):
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
         font=dict(family="DM Sans, Arial, sans-serif", color=TEXT, size=12),
-        title=dict(font=dict(size=15, color=TEXT), x=0.02, xanchor="left"),
+        title=dict(font=dict(size=14, color=TEXT), x=0.02, xanchor="left"),
         height=height,
-        margin=dict(l=48, r=28, t=62, b=48),
+        margin=dict(l=48, r=36, t=68, b=52),
         hoverlabel=dict(
             bgcolor="#FFFFFF",
             bordercolor=ORANGE,
@@ -46,15 +45,19 @@ def apply_plotly_theme(fig, height=390):
             gridcolor="rgba(15, 23, 42, 0.06)",
             zerolinecolor="rgba(15, 23, 42, 0.14)",
             linecolor=BORDER,
-            tickfont=dict(color=MUTED),
-            title_font=dict(color=MUTED),
+            tickfont=dict(color=MUTED, size=10),
+            title_font=dict(color=MUTED, size=11),
+            nticks=8,
+            tickangle=-35,
+            automargin=True,
         ),
         yaxis=dict(
             gridcolor="rgba(15, 23, 42, 0.06)",
             zerolinecolor="rgba(15, 23, 42, 0.14)",
             linecolor=BORDER,
-            tickfont=dict(color=MUTED),
-            title_font=dict(color=MUTED),
+            tickfont=dict(color=MUTED, size=10),
+            title_font=dict(color=MUTED, size=11),
+            automargin=True,
         ),
     )
     return fig
