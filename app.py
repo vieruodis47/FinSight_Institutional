@@ -901,6 +901,7 @@ with tabs[2]:
 # ---------------------------------------------------------------------
 # 04 Quantitative forecasts
 # ---------------------------------------------------------------------
+
 with tabs[3]:
     section_header("05 / Quantitative research", "Forecasts, distributions & model diagnostics",
                    "Historical patterns are extrapolated for research. They are not price targets or guarantees.")
@@ -927,20 +928,24 @@ with tabs[3]:
             with p2: card("Projected next value", fmt_number(prediction["predicted_value"], unit), prediction["next_label"])
             with p3: card("Backtest accuracy", fmt_number(prediction.get("fit_accuracy"), "%", decimals=1), f"Rolling 1Y MAPE: {fmt_number(prediction.get('mape'), '%')}")
             with p4: card("Reliability label", prediction["reliability"].upper(), f"95% CI: ±{fmt_number((prediction['confidence_interval'][1] - prediction['confidence_interval'][0]) / 2, unit)}")
+
         pred_fig = prediction_chart(analysis_result, target)
+        if pred_fig is not None:
+            styled_chart(pred_fig, 410)
+        else:
+            st.info("At least three annual observations are required for a trend forecast.")
+
         dist_fig = None
         try:
             from analysis.charts import normal_distribution_chart
             dist_fig = normal_distribution_chart(analysis_result, target)
         except Exception:
             dist_fig = None
-        f1, f2 = st.columns(2)
-        with f1:
-            if pred_fig is not None: styled_chart(pred_fig, 390)
-            else: st.info("At least three annual observations are required for a trend forecast.")
-        with f2:
-            if dist_fig is not None: styled_chart(dist_fig, 390)
-            else: st.info("Distribution view requires at least three valid annual observations.")
+        if dist_fig is not None:
+            styled_chart(dist_fig, 370)
+        else:
+            st.info("Distribution view requires at least three valid annual observations.")
+
         anomalies = analysis_result.get("anomalies", {})
         if anomalies:
             st.markdown("#### Historical anomaly flags")
