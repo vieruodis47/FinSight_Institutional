@@ -658,27 +658,60 @@ with tabs[0]:
     st.markdown("")
     section_header("01 / Executive brief", "Operating performance at a glance",
                    "The latest available annual SEC filing is used for fundamental indicators.")
-    left, right = st.columns([1.35, 1])
-    with left:
-        fig = revenue_vs_profit_chart(target_raw, company_name=target)
-        styled_chart(fig, 410)
-    with right:
+
+    peer_raw = raw.get(peer, {}) if peer else {}
+    if peer and peer_raw:
+        chart_c1, chart_c2 = st.columns(2)
+        with chart_c1:
+            fig_target = revenue_vs_profit_chart(target_raw, company_name=f"{target} ({target_name})")
+            styled_chart(fig_target, 380)
+        with chart_c2:
+            fig_peer = revenue_vs_profit_chart(peer_raw, company_name=f"{peer} ({peer_name})")
+            styled_chart(fig_peer, 380)
+
         indicator_rows = "".join(
-            f'<div style="display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding:10px 0">'
-            f'<span class="fs-muted">{label}</span><b>{value}</b></div>'
-            for label, value in [
-                ("Net margin", fmt_number(net_margin, "%")),
-                ("Revenue growth", fmt_number(revenue_growth, "%")),
-                ("Inventory turnover", fmt_number(latest_value(target_ratios, "inventory_turnover"), "x")),
-                ("Debt / equity", fmt_number(latest_value(target_ratios, "debt_to_equity"), "x")),
-                ("Current ratio", fmt_number(latest_value(target_ratios, "current_ratio"), "x")),
-                ("Free cash flow", fmt_money(latest_value(target_ratios, "free_cash_flow"), True)),
+            f'<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding:10px 0">'
+            f'<span class="fs-muted">{label}</span>'
+            f'<span><b>{t_val}</b> <span style="color:#94a3b8;margin:0 6px">|</span> <b style="color:#ea580c">{p_val}</b></span></div>'
+            for label, t_val, p_val in [
+                ("Net margin", fmt_number(net_margin, "%"), fmt_number(latest_value(peer_ratios, "net_margin_pct"), "%")),
+                ("Revenue growth", fmt_number(revenue_growth, "%"), fmt_number(latest_value(peer_ratios, "revenue_growth_pct"), "%")),
+                ("Inventory turnover", fmt_number(latest_value(target_ratios, "inventory_turnover"), "x"), fmt_number(latest_value(peer_ratios, "inventory_turnover"), "x")),
+                ("Debt / equity", fmt_number(latest_value(target_ratios, "debt_to_equity"), "x"), fmt_number(latest_value(peer_ratios, "debt_to_equity"), "x")),
+                ("Current ratio", fmt_number(latest_value(target_ratios, "current_ratio"), "x"), fmt_number(latest_value(peer_ratios, "current_ratio"), "x")),
+                ("Free cash flow", fmt_money(latest_value(target_ratios, "free_cash_flow"), True), fmt_money(latest_value(peer_ratios, "free_cash_flow"), True)),
             ]
         )
         st.markdown(
-            f'<div class="fs-panel"><h4 style="margin:0 0 8px 0">Latest reported indicators</h4>{indicator_rows}</div>',
+            f'<div class="fs-panel">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
+            f'<h4 style="margin:0">Latest reported indicators</h4>'
+            f'<span style="font-size:0.8rem"><b>{target}</b> <span style="color:#94a3b8">|</span> <b style="color:#ea580c">{peer}</b></span>'
+            f'</div>{indicator_rows}</div>',
             unsafe_allow_html=True,
         )
+    else:
+        left, right = st.columns([1.35, 1])
+        with left:
+            fig = revenue_vs_profit_chart(target_raw, company_name=f"{target} ({target_name})")
+            styled_chart(fig, 410)
+        with right:
+            indicator_rows = "".join(
+                f'<div style="display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding:10px 0">'
+                f'<span class="fs-muted">{label}</span><b>{value}</b></div>'
+                for label, value in [
+                    ("Net margin", fmt_number(net_margin, "%")),
+                    ("Revenue growth", fmt_number(revenue_growth, "%")),
+                    ("Inventory turnover", fmt_number(latest_value(target_ratios, "inventory_turnover"), "x")),
+                    ("Debt / equity", fmt_number(latest_value(target_ratios, "debt_to_equity"), "x")),
+                    ("Current ratio", fmt_number(latest_value(target_ratios, "current_ratio"), "x")),
+                    ("Free cash flow", fmt_money(latest_value(target_ratios, "free_cash_flow"), True)),
+                ]
+            )
+            st.markdown(
+                f'<div class="fs-panel"><h4 style="margin:0 0 8px 0">Latest reported indicators</h4>{indicator_rows}</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("")
     section_header("02 / Peer lens", "Company comparison",
