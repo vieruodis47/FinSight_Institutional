@@ -259,36 +259,26 @@ def yoy_line_chart(ratios_data, metric_name, company_name, raw_metrics_pool=None
         y=values,
         mode='lines+markers',
         name=company_name,
-        # 🎨 Standalone Slate/Navy Blue for single asset context
         line=dict(width=3, color='#2B5C8F'),
         marker=dict(size=8, color='#2B5C8F')
     ))
 
     fig.update_layout(
-        title=f"{company_name} — {metric_name.replace('_', ' ').title()} Prediction",
+        title=f"{company_name} — {clean_metric_title} Trend",
         xaxis=dict(
-            title="Timeline Interval",
-            tickmode='array' if len(years) <= 50 else 'auto',
-            tickvals=tick_vals,
-            ticktext=tick_text,
-            nticks=6 if len(years) > 50 else None,
+            title="Fiscal Year",
+            nticks=8,
             automargin=True,
-            tickangle=0
+            tickangle=0,
         ),
-        yaxis=dict(title=metric_name.replace('_', ' ').title(), automargin=True),
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.22,
-            xanchor="left",
-            x=0,
-            font=dict(size=10)
+        yaxis=dict(
+            title=clean_metric_title,
+            automargin=True,
         ),
-        margin=dict(l=48, r=20, t=58, b=85),
         template="plotly_white",
-        hovermode="x unified"
+        hovermode="x unified",
     )
-    
+
     return fig
 
 def yoy_comparison_chart(filtered_ratios, metric_name, company_names, target_company=None):
