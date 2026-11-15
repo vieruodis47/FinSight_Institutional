@@ -686,7 +686,6 @@ def normal_distribution_chart(analysis_result, company_name="Company"):
 
     return fig
 
-
 def prediction_chart(analysis_result, company_name="Company"):
     """
     Renders regression trendline forecasts with anomaly indicators.
@@ -708,12 +707,13 @@ def prediction_chart(analysis_result, company_name="Company"):
     x_hist = list(range(len(years)))
     x_pred = len(years)
     all_x = x_hist + [x_pred]
-    
+
     if len(years) > 50:
-        all_labels = None 
+        all_labels = None
     else:
-        all_labels = [y[:4] for y in years] + ["FY2027\n(proj)"]
-        
+        next_yr_str = prediction.get("next_label", "").split()[0] or f"FY{int(years[-1][:4]) + 1}"
+        all_labels = [y[:4] for y in years] + [f"{next_yr_str}\n(proj)"]
+
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -738,13 +738,19 @@ def prediction_chart(analysis_result, company_name="Company"):
         name=f'95% CI ({reliability.upper()})',
     ))
 
+    acc_label = (
+        f"Accuracy: {prediction['fit_accuracy']}% (MAPE: {prediction['mape']}%)"
+        if "fit_accuracy" in prediction
+        else f"R²={prediction['r_squared']}"
+    )
+
     fig.add_trace(go.Scatter(
         x=[x_pred], y=[pred_val],
         mode='markers+text',
         marker=dict(size=12, color=r2_color, symbol='diamond', line=dict(width=2, color='white')),
         text=[f"${pred_val:.2f}" if len(years) > 50 else f"{pred_val:.2f}"],
         textposition='top center',
-        name=f'Target Target (R²={prediction["r_squared"]})'
+        name=f'Projected ({acc_label})'
     ))
 
     show_anomaly_legend = True if len(years) < 50 else False
@@ -754,10 +760,10 @@ def prediction_chart(analysis_result, company_name="Company"):
             fig.add_trace(go.Scatter(
                 x=[i], y=[values[i]],
                 mode='markers',
-                marker=dict(size=8 if len(years) > 50 else 14, 
+                marker=dict(size=8 if len(years) > 50 else 14,
                             color='#E15759', symbol='circle-open',
                             line=dict(width=1.5 if len(years) > 50 else 3, color='#E15759')),
-                name=f"Volatility Event" if len(years) > 50 else f"Anomaly {year[:4]}",
+                name="Volatility Event" if len(years) > 50 else f"Anomaly {year[:4]}",
                 hovertemplate=f"Volatility Outlier {year}: {values[i]:.2f}<extra></extra>",
                 showlegend=show_anomaly_legend
             ))
@@ -765,10 +771,10 @@ def prediction_chart(analysis_result, company_name="Company"):
     trend_color = {"improving": "green", "declining": "red", "stable": "gray"}
     fig.add_annotation(
         x=0.02, y=0.98, xref="paper", yref="paper",
-        text=f"Trend: {prediction['trend'].upper()} | R²: {prediction['r_squared']} | Confidence: {reliability.upper()}",
+        text=f"Trend: {prediction['trend'].upper()} | {acc_label} | Confidence: {reliability.upper()}",
         showarrow=False,
         font=dict(size=11, color=trend_color.get(prediction['trend'], 'gray')),
-        align="left", bgcolor="rgba(255,255,255,0.8)"
+        align="left", bgcolor="rgba(255,255,255,0.85)"
     )
 
     fig.update_layout(
@@ -780,7 +786,7 @@ def prediction_chart(analysis_result, company_name="Company"):
             ticktext=all_labels if len(years) < 50 else None,
             nticks=5 if len(years) > 50 else None,
             automargin=True,
-            tickangle=0 if len(years) > 50 else 45
+            tickangle=0 if len(years) > 50 else -35
         ),
         yaxis=dict(title=metric_name.replace('_', ' ').title(), automargin=True),
         template="plotly_white",
@@ -788,7 +794,6 @@ def prediction_chart(analysis_result, company_name="Company"):
     )
 
     return fig
-
 
 # =====================================================================
 # DASHBOARD GRID LAYOUT CONVERGER
