@@ -12,11 +12,14 @@ def get_price_history(ticker, period="2y"):
 
 
 def get_key_stats(ticker):
-    """Fetch market snapshot fields; missing Yahoo fields remain None."""
+    """Fetch market snapshot and company background fields; missing Yahoo fields remain None."""
     try:
         info = yf.Ticker(ticker).info or {}
     except Exception:
         info = {}
+    hq_parts = [info.get("city"), info.get("state"), info.get("country")]
+    headquarters = ", ".join(p for p in hq_parts if p) or None
+
     return {
         "current_price": info.get("currentPrice"),
         "market_cap": info.get("marketCap"),
@@ -26,7 +29,14 @@ def get_key_stats(ticker):
         "average_volume": info.get("averageVolume"),
         "dividend_yield": info.get("dividendYield"),
         "currency": info.get("currency", "USD"),
-        "short_name": info.get("shortName", ticker),
+        "short_name": info.get("shortName") or info.get("longName") or ticker,
+        "long_name": info.get("longName") or info.get("shortName") or ticker,
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "headquarters": headquarters,
+        "employees": info.get("fullTimeEmployees"),
+        "website": info.get("website"),
+        "summary": info.get("longBusinessSummary"),
     }
 
 
