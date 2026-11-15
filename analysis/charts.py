@@ -709,10 +709,16 @@ def prediction_chart(analysis_result, company_name="Company"):
     all_x = x_hist + [x_pred]
 
     if len(years) > 50:
-        all_labels = None
+        tick_vals = None
+        tick_text = None
     else:
         next_yr_str = prediction.get("next_label", "").split()[0] or f"FY{int(years[-1][:4]) + 1}"
-        all_labels = [y[:4] for y in years] + [f"{next_yr_str}\n(proj)"]
+        all_labels = [y[:4] for y in years] + [f"{next_yr_str} (proj)"]
+        # Show every 3rd historical year + always show the final projected year
+        step = max(1, len(all_x) // 6)
+        keep_idx = set(range(0, len(years), step)) | {x_pred}
+        tick_vals = [all_x[i] for i in sorted(keep_idx)]
+        tick_text = [all_labels[i] for i in sorted(keep_idx)]
 
     fig = go.Figure()
 
@@ -781,12 +787,12 @@ def prediction_chart(analysis_result, company_name="Company"):
         title=f"{company_name} — {metric_name.replace('_', ' ').title()} Prediction",
         xaxis=dict(
             title="Timeline Interval",
-            tickmode='array' if len(years) < 50 else 'auto',
-            tickvals=all_x if len(years) < 50 else None,
-            ticktext=all_labels if len(years) < 50 else None,
-            nticks=5 if len(years) > 50 else None,
+            tickmode='array' if len(years) <= 50 else 'auto',
+            tickvals=tick_vals,
+            ticktext=tick_text,
+            nticks=6 if len(years) > 50 else None,
             automargin=True,
-            tickangle=0 if len(years) > 50 else -35
+            tickangle=0 if len(years) > 50 else -30
         ),
         yaxis=dict(title=metric_name.replace('_', ' ').title(), automargin=True),
         template="plotly_white",
