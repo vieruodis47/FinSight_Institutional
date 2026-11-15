@@ -713,10 +713,9 @@ def prediction_chart(analysis_result, company_name="Company"):
         tick_text = None
     else:
         next_yr_str = prediction.get("next_label", "").split()[0] or f"FY{int(years[-1][:4]) + 1}"
-        all_labels = [y[:4] for y in years] + [f"{next_yr_str} (proj)"]
-        # Show every 3rd historical year + always show the final projected year
-        step = max(1, len(all_x) // 6)
-        keep_idx = set(range(0, len(years), step)) | {x_pred}
+        all_labels = [y[:4] for y in years] + [f"{next_yr_str}E"]
+        step = max(1, len(all_x) // 5)
+        keep_idx = {i for i in range(0, len(years), step) if (x_pred - i) >= 2} | {x_pred}
         tick_vals = [all_x[i] for i in sorted(keep_idx)]
         tick_text = [all_labels[i] for i in sorted(keep_idx)]
 
