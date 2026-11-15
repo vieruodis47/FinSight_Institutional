@@ -922,10 +922,11 @@ with tabs[3]:
         prediction = analysis_result.get("prediction")
         if prediction:
             p1, p2, p3, p4 = st.columns(4)
-            with p1: card("Trend direction", prediction["trend"].upper(), "Weighted linear trend")
-            with p2: card("Projected next value", fmt_number(prediction["predicted_value"], "%" if "pct" in forecast_metric else ""), prediction["next_label"])
-            with p3: card("Model R²", fmt_number(prediction["r_squared"]), "In-sample trend fit")
-            with p4: card("Reliability label", prediction["reliability"].upper(), "Heuristic based on R²")
+            unit = "%" if "pct" in forecast_metric else ""
+            with p1: card("Trend direction", prediction["trend"].upper(), "Damped weighted trend")
+            with p2: card("Projected next value", fmt_number(prediction["predicted_value"], unit), prediction["next_label"])
+            with p3: card("Backtest accuracy", fmt_number(prediction.get("fit_accuracy"), "%", decimals=1), f"Rolling 1Y MAPE: {fmt_number(prediction.get('mape'), '%')}")
+            with p4: card("Reliability label", prediction["reliability"].upper(), f"95% CI: ±{fmt_number((prediction['confidence_interval'][1] - prediction['confidence_interval'][0]) / 2, unit)}")
         pred_fig = prediction_chart(analysis_result, target)
         dist_fig = None
         try:
