@@ -626,3 +626,149 @@ def stock_monte_carlo_chart(mc_res, company_name):
         hovermode="x unified",
     )
     return fig
+
+def answer_research_question(
+    question,
+    target,
+    target_ratios,
+    target_raw=None,
+    peer=None,
+    peer_ratios=None,
+    target_risk=None,
+    gbm_res=None,
+    sector_label=None,
+):
+    """
+    Deterministic multi-source financial Q&A synthesizer combining SEC fundamentals,
+    peer spreads, risk/CAPM diagnostics, and Monte Carlo tail-risk outputs.
+    """
+    q = (question or "").strip().lower()
+    if not q:
+        return None
+
+    sorted_yrs = sorted(target_ratios.keys()) if target_ratios else []
+    latest_yr = sorted_yrs[-1] if sorted_yrs else "N/A"
+    prev_yr = sorted_yrs[-2] if len(sorted_yrs) >= 2 else None
+    lat = target_ratios.get(latest_yr, {}) if latest_yr != "N/A" else {}
+    prv = target_ratios.get(prev_yr, {}) if prev_yr else {}
+
+    peer_yrs = sorted(peer_ratios.keys()) if peer_ratios else []
+    peer_lat_yr = peer_yrs[-1] if peer_yrs else None
+    p_lat = peer_ratios.get(peer_lat_yr, {}) if peer_lat_yr else {}
+
+    def _fmt(val, suffix="%", dec=2):
+        if val is None or (isinstance(val, float) and np.isnan(val)):
+            return "N/A"
+        return f"{val:,.{dec}f}{suffix}"
+
+    bullets = []
+    table_rows = []
+    headline = f"Research Brief — {target} (FY{latest_yr})"
+
+    # 1. Peer Comparison / Head-to-Head
+    if any(k in q for k in ["peer", "compare", "vs", "versus", "relative", "spread", "benchmark"]):
+        headline = f"Head-to-Head Fundamental & Risk Comparison: {target} vs. {peer or 'Peer'}"
+        if not peer or not p_lat:
+            bullets.append(f"No comparison peer is currently selected in the sidebar. Select a peer alongside **{target}** to generate side-by-side spreads.")
+        else:
+            metrics_to_compare = [
+                ("Gross Margin", "gross_margin_pct", "%"),
+                ("Operating Margin", "operating_margin_pct", "%"),
+                ("Net Margin", "net_margin_pct", "%"),
+                ("Revenue Growth (YoY)", "revenue_growth_pct", "%"),
+                ("Return on Equity (ROE)", "roe_pct", "%"),
+                ("Debt-to-Equity", "debt_to_equity", "x"),
+                ("Current Ratio", "current_ratio", "x"),
+            ]
+            for label, key, unit in metrics_to_compare:
+                tv = lat.get(key)
+                pv = p_lat.get(key)
+                diff = (tv - pv) if (tv is not None and pv is not None) else None
+                table_rows.append({
+                    "Metric": label,
+                    f"{target} (FY{latest_yr})": _fmt(tv, unit),
+                    f"{peer} (FY{peer_lat_yr})": _fmt(pv, unit),
+                    "Spread": f"{diff:+.2f}{unit}" if diff is not None else "N/A",
+                })
+            gm_t, gm_p = lat.get("gross_margin_pct"), p_lat.get("gross_margin_pct")
+            if gm_t is not None and gm_p is not None:
+                leader = target if gm_t >= gm_p else peer
+                bullets.append(f"**Gross margin leadership:** **{leader}** leads by **{abs(gm_t - gm_p):.2f} percentage points** ({_fmt(gm_t)} vs. {_fmt(gm_p)}).")
+            om_t, om_p = lat.get("operating_margin_pct"), p_lat.get("operating_margin_pct")
+            if om_t is not None and om_p is not None:
+                bullets.append(f"**Operating efficiency:** {target} converts **{_fmt(om_t)}** of revenue into operating income compared to **{_fmt(om_p)}** for {peer}.")
+
+    # 2. Risk, Volatility, CAPM, Monte Carlo & Tail Risk
+    elif any(k in q for k in ["risk", "beta", "sharpe", "volatility", "var", "monte carlo", "drawdown", "tail", "simulation"]):
+        headline = f"Quantitative Risk, CAPM & Monte Carlo Tail-Risk Profile — {target}"
+        if target_risk:
+            bullets.append(f"**Market sensitivity (CAPM):** {target} carries a Beta of **{_fmt(target_risk.get('beta'), 'x')}** with annualized Jensen's alpha of **{_fmt(target_risk.get('jensen_alpha_pct'), '%')}** vs. S&P 500.")
+            bullets.append(f"**Risk-adjusted return:** Annualized volatility is **{_fmt(target_risk.get('ann_volatility_pct'), '%')}**, yielding a Sharpe ratio of **{_fmt(target_risk.get('sharpe_ratio'), '')}** (Rf = 4.25%) and a peak-to-trough max drawdown of **{_fmt(target_risk.get('max_drawdown_pct'), '%')}**.")
+        if gbm_res:
+            bullets.append(
+                f"**{gbm_res['horizon_days']}-Day GBM Simulation ({gbm_res['simulations']:,} paths):** "
+                f"Median target **${gbm_res['median_target']:,.2f}** (10th–90th pct range: **${gbm_res['bear_target']:,.2f}** to **${gbm_res['bull_target']:,.2f}**), "
+                f"with a **{gbm_res['prob_gain_pct']:.1f}%** probability of positive return and **{_fmt(gbm_res['var_95_pct'], '%')}** 95% horizon VaR."
+            )
+        if not bullets:
+            bullets.append("Market history is unavailable for this ticker to compute daily CAPM and Monte Carlo risk diagnostics.")
+
+    # 3. Leverage, Liquidity, Debt & Cash Flow
+    elif any(k in q for k in ["leverage", "debt", "liquidity", "cash", "fcf", "balance sheet", "solvency", "current ratio"]):
+        headline = f"Balance Sheet Solvency, Liquidity & Cash Flow — {target} (FY{latest_yr})"
+        dte = lat.get("debt_to_equity")
+        cr = lat.get("current_ratio")
+        fcf = lat.get("free_cash_flow")
+        bullets.append(f"**Capital structure:** Debt-to-Equity stands at **{_fmt(dte, 'x')}** in FY{latest_yr}" + (f" (vs. {_fmt(prv.get('debt_to_equity'), 'x')} in FY{prev_yr})." if prev_yr else "."))
+        bullets.append(f"**Short-term liquidity:** Current ratio is **{_fmt(cr, 'x')}**, indicating {'healthy near-term working capital coverage (>1.5x)' if (cr and cr >= 1.5) else 'tighter short-term liquidity coverage' if cr else 'unavailable balance sheet detail'}.")
+        if fcf is not None:
+            bullets.append(f"**Free cash flow generation:** Reported FY{latest_yr} FCF is **${fcf / 1e9:,.2f}B**.")
+
+    # 4. Growth & Historical Anomalies
+    elif any(k in q for k in ["growth", "revenue", "anomal", "outlier", "trend", "history", "driver"]):
+        headline = f"Top-Line Growth Trajectory & Historical Outliers — {target}"
+        rg = lat.get("revenue_growth_pct")
+        bullets.append(f"**Latest top-line momentum:** FY{latest_yr} revenue growth printed at **{_fmt(rg, '%')}** YoY.")
+        for metric_key, label in [("operating_margin_pct", "Operating Margin"), ("gross_margin_pct", "Gross Margin"), ("revenue_growth_pct", "Revenue Growth")]:
+            s = {yr: vals[metric_key] for yr, vals in target_ratios.items() if vals.get(metric_key) is not None}
+            res = analyze_metric(s, metric_name=metric_key) if len(s) >= 3 else None
+            if res and res.get("anomalies"):
+                for a_yr, a_info in res["anomalies"].items():
+                    bullets.append(f"**{label} anomaly (FY{a_yr}):** Observed **{_fmt(a_info['value'], '%')}** (`{a_info['z_score']:+.2f}σ` vs. historical mean).")
+        if len(bullets) == 1:
+            bullets.append("No historical profitability or growth observations exceeded the `|z| > 2.0σ` anomaly threshold.")
+
+    # 5. Default / Profitability & Executive Tear-Sheet Summary
+    else:
+        headline = f"Executive Fundamental Tear-Sheet — {target} ({sector_label or 'Equity Universe'}, FY{latest_yr})"
+        bullets.append(
+            f"**Margin stack (FY{latest_yr}):** Gross margin **{_fmt(lat.get('gross_margin_pct'))}**, "
+            f"Operating margin **{_fmt(lat.get('operating_margin_pct'))}**, and Net margin **{_fmt(lat.get('net_margin_pct'))}**."
+        )
+        bullets.append(
+            f"**Growth & capital returns:** YoY revenue growth of **{_fmt(lat.get('revenue_growth_pct'))}** with Return on Equity (ROE) at **{_fmt(lat.get('roe_pct'))}**."
+        )
+        if peer and p_lat:
+            bullets.append(
+                f"**Peer context ({peer}):** {target} operating margin is **{_fmt(lat.get('operating_margin_pct'))}** vs. {peer} at **{_fmt(p_lat.get('operating_margin_pct'))}**."
+            )
+
+    # Always include a compact multi-year trend table for the target company
+    if not table_rows and sorted_yrs:
+        for yr in sorted_yrs[-4:]:
+            r = target_ratios.get(yr, {})
+            table_rows.append({
+                "Fiscal Year": str(yr),
+                "Revenue Growth": _fmt(r.get("revenue_growth_pct")),
+                "Gross Margin": _fmt(r.get("gross_margin_pct")),
+                "Operating Margin": _fmt(r.get("operating_margin_pct")),
+                "Net Margin": _fmt(r.get("net_margin_pct")),
+                "ROE": _fmt(r.get("roe_pct")),
+            })
+
+    return {
+        "question": question,
+        "headline": headline,
+        "bullets": bullets,
+        "table": table_rows,
+    }
