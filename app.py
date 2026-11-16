@@ -24,6 +24,7 @@ import streamlit as st
 from analysis.metrics import (
     COMPANIES, COMPANY_LABELS, get_company_metrics, calculate_ratios,
     get_quarterly_metrics, get_industry_sector, get_metric_explanation,
+    SECTOR_TAXONOMY, classify_company_sector, get_sector_peers,
 )
 from analysis.stock_data import get_all_stock_data, compute_risk_metrics
 from analysis.stats import (
@@ -447,7 +448,15 @@ with st.sidebar:
     if not available_tickers:
         st.error("No SEC company identifiers are configured in analysis/metrics.py.")
         st.stop()
+    sector_options = ["All Sectors"] + list(SECTOR_TAXONOMY.keys())
+selected_sector = st.selectbox("Sector / Genre filter", sector_options, index=0, key="sector_filter")
 
+if selected_sector == "All Sectors":
+    filtered_tickers = list(COMPANIES.keys())
+else:
+    sector_members = set(SECTOR_TAXONOMY[selected_sector])
+    filtered_tickers = [t for t in COMPANIES.keys() if t in sector_members] or list(COMPANIES.keys())
+    
     target = st.selectbox(
     "Target company",
     available_tickers,
@@ -618,6 +627,19 @@ with tabs[0]:
         "Business background & sector classification",
         "Corporate overview sourced from Yahoo Finance & SEC SIC taxonomy.",
     )
+    
+    target_yf_sec = (stocks or {}).get(target, {}).get("stats", {}).get("sector")
+    target_genre = classify_company_sector(target, target_yf_sec)
+
+    if peer:
+        peer_yf_sec = (stocks or {}).get(peer, {}).get("stats", {}).get("sector")
+        peer_genre = classify_company_sector(peer, peer_yf_sec)
+        match_label = "Same-Sector Peer" if target_genre == peer_genre else f"Cross-Sector ({peer_genre})"
+        st.caption(f"**Sector classification:** `{target}` — **{target_genre}**  |  `{peer}` — **{peer_genre}** ({match_label})")
+    else:
+        st.caption(f"**Sector classification:** `{target}` — **{target_genre}**")
+
+    def render_company_profile(tk, full_name, stock_dict):
 
     def render_company_profile(tk, full_name, stock_dict):
         s = stock_dict.get("stats", {})
