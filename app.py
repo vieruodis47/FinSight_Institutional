@@ -39,6 +39,10 @@ from analysis.theme import (
     apply_plotly_theme, NAVY, PANEL, PANEL_ALT, BORDER,
     TEXT, MUTED, BLUE, TEAL, GREEN, RED, AMBER,
 )
+from analysis.stats import (
+    analyze_metric, run_monte_carlo_forecast, monte_carlo_forecast_chart,
+    explain_historical_anomalies,
+)
 
 st.set_page_config(
     page_title="FinSight | Institutional Research",
@@ -979,15 +983,29 @@ with tabs[3]:
             st.info("Distribution view requires at least three valid annual observations.")
 
         anomalies = analysis_result.get("anomalies", {})
-        if anomalies:
-            st.markdown("#### Historical anomaly flags")
-            anomaly_df = pd.DataFrame([
-                {"Fiscal year": str(year), "Observed value": info["value"], "Z-score": info["z_score"]}
-                for year, info in anomalies.items()
-            ])
-            st.dataframe(anomaly_df, use_container_width=True, hide_index=True)
-        else:
-            st.caption("No historical observations crossed the current |z-score| > 2 anomaly threshold.")
+     if anomalies:
+         st.markdown("#### Historical anomaly flags & attribution")
+         explained_rows = explain_historical_anomalies(
+             anomalies,
+             metric_name=forecast_metric,
+             company_ratios=target_ratios,
+             raw_metrics=target_raw,
+             ticker=target,
+         )
+         anomaly_df = pd.DataFrame(explained_rows)
+         st.dataframe(
+             anomaly_df,
+             use_container_width=True,
+             hide_index=True,
+             column_config={
+                 "SEC filing": st.column_config.LinkColumn(
+                     "SEC EDGAR",
+                     display_text="View 10-K →",
+                 )
+             },
+         )
+     else:
+         st.caption("No historical observations crossed the current |z-score| > 2 anomaly threshold.")
         mc_data = run_monte_carlo_forecast(series, steps=3, simulations=3000)
         if mc_data:
             st.markdown("#### Monte Carlo scenario range")
