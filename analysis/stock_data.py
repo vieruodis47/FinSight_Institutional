@@ -5,6 +5,7 @@ Returns one consistent structure per ticker:
 """
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
 
 def get_price_history(ticker, period="2y"):
@@ -66,27 +67,6 @@ def calculate_returns(history):
     }
 
 
-def get_all_stock_data(tickers=None, period="2y"):
-    """Download price history, trailing returns, and market snapshot for tickers."""
-    if tickers is None:
-        tickers = ["GAP", "PVH", "AEO"]
-
-    results = {}
-    for ticker in dict.fromkeys(str(t).upper().strip() for t in tickers if t):
-        try:
-            history = get_price_history(ticker, period=period)
-            if history is None or history.empty:
-                continue
-            results[ticker] = {
-                "ticker": ticker,
-                "history": history,
-                "returns": calculate_returns(history),
-                "stats": get_key_stats(ticker),
-            }
-        except Exception as exc:
-            print(f"[FinSight] Market data unavailable for {ticker}: {exc}")
-    return results
-
 def compute_risk_metrics(history_df, risk_free_rate=0.0425):
     """
     Compute annualized volatility, Sharpe ratio, max drawdown, and CAPM Beta
@@ -116,7 +96,6 @@ def compute_risk_metrics(history_df, risk_free_rate=0.0425):
         spy = yf.download("^GSPC", start=start_dt, end=end_dt, progress=False, auto_adjust=True)
         if not spy.empty and "Close" in spy.columns:
             mkt_close = spy["Close"].squeeze().dropna()
-            # Normalize timezone awareness before joining
             if getattr(daily_ret.index, "tz", None) is not None:
                 daily_ret.index = daily_ret.index.tz_localize(None)
             if getattr(mkt_close.index, "tz", None) is not None:
