@@ -12,7 +12,6 @@ Provides:
 
 import numpy as np
 from scipy import stats
-import numpy as np
 import pandas as pd
 
 def standardize_series(values_dict):
