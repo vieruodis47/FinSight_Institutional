@@ -983,29 +983,30 @@ with tabs[3]:
             st.info("Distribution view requires at least three valid annual observations.")
 
         anomalies = analysis_result.get("anomalies", {})
-     if anomalies:
-         st.markdown("#### Historical anomaly flags & attribution")
-         explained_rows = explain_historical_anomalies(
-             anomalies,
-             metric_name=forecast_metric,
-             company_ratios=target_ratios,
-             raw_metrics=target_raw,
-             ticker=target,
-         )
-         anomaly_df = pd.DataFrame(explained_rows)
-         st.dataframe(
-             anomaly_df,
-             use_container_width=True,
-             hide_index=True,
-             column_config={
-                 "SEC filing": st.column_config.LinkColumn(
-                     "SEC EDGAR",
-                     display_text="View 10-K →",
-                 )
-             },
-         )
-     else:
-         st.caption("No historical observations crossed the current |z-score| > 2 anomaly threshold.")
+        if anomalies:
+            st.markdown("#### Historical anomaly flags & attribution")
+            explained_rows = explain_historical_anomalies(
+                anomalies,
+                metric_name=forecast_metric,
+                company_ratios=target_ratios,
+                raw_metrics=target_raw,
+                ticker=target,
+            )
+            anomaly_df = pd.DataFrame(explained_rows)
+            st.dataframe(
+                anomaly_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "SEC filing": st.column_config.LinkColumn(
+                        "SEC EDGAR",
+                        display_text="View 10-K →",
+                    )
+                },
+            )
+        else:
+            st.caption("No historical observations crossed the current |z-score| > 2 anomaly threshold.")
+
         mc_data = run_monte_carlo_forecast(series, steps=3, simulations=3000)
         if mc_data:
             st.markdown("#### Monte Carlo scenario range")
@@ -1014,36 +1015,6 @@ with tabs[3]:
             st.caption("Shaded range shows the simulated 10th–90th percentile path using historical log changes. This is a scenario distribution, not a calibrated forecast interval.")
     else:
         st.info("Not enough annual data to construct a statistical forecast for this metric.")
-
-    st.markdown('<div class="fs-divider"></div>', unsafe_allow_html=True)
-    section_header("06 / Multivariate model", "Ridge Regression",
-                   "The original feature set is retained: inventory turnover, current ratio, leverage, margins, revenue growth and free cash flow.")
-    with st.spinner("Fitting per-company Ridge models…"):
-        ridge_results = run_per_company_models({target: target_ratios}, {target: target_raw})
-    target_models = ridge_results.get(target, {})
-    ridge_rows = []
-    for metric, result in target_models.items():
-        ridge_rows.append({
-            "Target": metric.replace("_", " ").title(),
-            "Prediction": result.get("predicted"),
-            "LOO CV R²": result.get("r2"),
-            "In-sample R²": result.get("in_sample_r2"),
-            "Alpha": result.get("alpha"),
-            "Samples": result.get("n_samples"),
-            "Reliability": reliability_label(result.get("r2")),
-            "Status": result.get("reason", "Available" if result.get("predicted") is not None else "Unavailable"),
-        })
-    ridge_df = pd.DataFrame(ridge_rows)
-    st.dataframe(ridge_df, use_container_width=True, hide_index=True)
-    for metric, result in target_models.items():
-        if result.get("importances"):
-            with st.expander(f"Feature coefficients · {metric.replace('_', ' ').title()}"):
-                importance = pd.DataFrame(
-                    [{"Feature": key.replace("_", " ").title(), "Coefficient": value}
-                     for key, value in sorted(result["importances"].items(), key=lambda item: abs(item[1]), reverse=True)]
-                )
-                st.dataframe(importance, use_container_width=True, hide_index=True)
-    st.caption("LOO CV R² is calculated from pooled leave-one-out predictions. Small annual samples can produce unstable estimates; inspect sample counts and diagnostics before drawing conclusions.")
 
 # ---------------------------------------------------------------------
 # 05 Research Q&A
