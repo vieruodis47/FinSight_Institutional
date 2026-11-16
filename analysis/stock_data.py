@@ -6,7 +6,7 @@ Returns one consistent structure per ticker:
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from analysis.stock_data import fetch_universe_stock_data, compute_risk_metrics
+
 
 def get_price_history(ticker, period="2y"):
     return yf.Ticker(ticker).history(period=period)
