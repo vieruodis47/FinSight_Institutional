@@ -1017,7 +1017,64 @@ def get_available_years(ticker):
 
     return sorted(complete_years)
 
+SECTOR_TAXONOMY = {
+    "Information Technology": ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "INTC", "CSCO", "QCOM", "TXN", "IBM", "NOW", "INTU", "AMAT", "MU", "PLTR"],
+    "Healthcare & Life Sciences": ["A", "JNJ", "UNH", "LLY", "PFE", "ABBV", "MRK", "TMO", "ABT", "DHR", "BMY", "AMGN", "ISRG", "GILD", "VRTX", "SYK", "BDX", "ILMN"],
+    "Financials": ["JPM", "BAC", "WFC", "GS", "MS", "BLK", "C", "SCHW", "AXP", "SPGI", "MCO", "CME", "CB", "PGR", "V", "MA"],
+    "Consumer Discretionary": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "LOW", "BKNG", "TJX", "CMG", "TGT"],
+    "Consumer Staples": ["WMT", "PG", "KO", "PEP", "COST", "PM", "MO", "CL", "MDLZ", "KMB"],
+    "Industrials & Aerospace": ["CAT", "HON", "UNP", "UPS", "BA", "GE", "RTX", "LMT", "DE", "MMM", "ETN", "EMR"],
+    "Energy & Materials": ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "LIN", "APD", "FCX", "NEM"],
+    "Communication Services": ["NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "EA", "TTWO"],
+    "Utilities & Real Estate": ["NEE", "DUK", "SO", "D", "PLD", "AMT", "EQIX", "SPG"],
+}
 
+# Normalize Yahoo Finance sector names into FinSight's canonical genres
+_YF_SECTOR_NORMALIZER = {
+    "Technology": "Information Technology",
+    "Healthcare": "Healthcare & Life Sciences",
+    "Financial Services": "Financials",
+    "Consumer Cyclical": "Consumer Discretionary",
+    "Consumer Defensive": "Consumer Staples",
+    "Industrials": "Industrials & Aerospace",
+    "Energy": "Energy & Materials",
+    "Basic Materials": "Energy & Materials",
+    "Communication Services": "Communication Services",
+    "Utilities": "Utilities & Real Estate",
+    "Real Estate": "Utilities & Real Estate",
+}
+
+
+def classify_company_sector(ticker, yf_sector=None):
+    """
+    Classify a ticker into a canonical institutional sector/genre.
+    Checks curated universe taxonomy first, then normalizes Yahoo Finance metadata.
+    """
+    t = str(ticker).upper().strip()
+    for sector_name, members in SECTOR_TAXONOMY.items():
+        if t in members:
+            return sector_name
+
+    if yf_sector:
+        return _YF_SECTOR_NORMALIZER.get(yf_sector, yf_sector)
+
+    return "Multi-Sector / Unclassified"
+
+
+def get_sector_peers(ticker, available_tickers, stock_data_map=None):
+    """Return all tickers in `available_tickers` that belong to the same sector as `ticker`."""
+    target_yf_sector = (stock_data_map or {}).get(ticker, {}).get("stats", {}).get("sector")
+    target_sector = classify_company_sector(ticker, target_yf_sector)
+
+    peers = []
+    for cand in available_tickers:
+        if cand == ticker:
+            continue
+        cand_yf_sector = (stock_data_map or {}).get(cand, {}).get("stats", {}).get("sector")
+        if classify_company_sector(cand, cand_yf_sector) == target_sector:
+            peers.append(cand)
+    return target_sector, peers
+    
 # ============================================================
 # 14. INTERNAL TEST
 # ============================================================
