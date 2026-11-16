@@ -32,6 +32,7 @@ from analysis.stats import (
     explain_historical_anomalies,
     run_stock_price_monte_carlo,
     stock_monte_carlo_chart,
+    answer_research_question,
 )
 from analysis.ridge_model import run_per_company_models, reliability_label
 from analysis.charts import (
