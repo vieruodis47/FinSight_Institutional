@@ -66,7 +66,27 @@ def calculate_returns(history):
         "1_year_return_pct": return_since(365),
     }
 
-
+def get_all_stock_data(tickers, period="2y"):
+    """Fetch price history, returns, and key stats for a list of tickers."""
+    results = {}
+    for ticker in tickers:
+        try:
+            history = get_price_history(ticker, period=period)
+            results[ticker] = {
+                "ticker": ticker,
+                "history": history,
+                "returns": calculate_returns(history),
+                "stats": get_key_stats(ticker),
+            }
+        except Exception:
+            results[ticker] = {
+                "ticker": ticker,
+                "history": pd.DataFrame(),
+                "returns": {},
+                "stats": {"short_name": ticker, "long_name": ticker},
+            }
+    return results
+    
 def compute_risk_metrics(history_df, risk_free_rate=0.0425):
     """
     Compute annualized volatility, Sharpe ratio, max drawdown, and CAPM Beta
