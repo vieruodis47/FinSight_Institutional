@@ -27,7 +27,10 @@ from analysis.metrics import (
 )
 from analysis.stock_data import get_all_stock_data, compute_risk_metrics
 from analysis.stats import (
-    analyze_metric, run_monte_carlo_forecast, monte_carlo_forecast_chart,
+    analyze_metric,
+    explain_historical_anomalies,
+    run_stock_price_monte_carlo,
+    stock_monte_carlo_chart,
 )
 from analysis.ridge_model import run_per_company_models, reliability_label
 from analysis.charts import (
