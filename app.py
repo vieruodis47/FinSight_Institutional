@@ -21,13 +21,11 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-from analysis.stock_data import fetch_universe_stocks, compute_risk_metrics
-
 from analysis.metrics import (
-    COMPANIES, get_company_metrics, calculate_ratios,
+    COMPANIES, COMPANY_LABELS, get_company_metrics, calculate_ratios,
     get_quarterly_metrics, get_industry_sector, get_metric_explanation,
 )
-from analysis.stock_data import get_all_stock_data
+from analysis.stock_data import get_all_stock_data, compute_risk_metrics
 from analysis.stats import (
     analyze_metric, run_monte_carlo_forecast, monte_carlo_forecast_chart,
 )
@@ -40,11 +38,6 @@ from analysis.charts import (
 from analysis.theme import (
     apply_plotly_theme, NAVY, PANEL, PANEL_ALT, BORDER,
     TEXT, MUTED, BLUE, TEAL, GREEN, RED, AMBER,
-)
-
-from analysis.metrics import (
-    COMPANIES, COMPANY_LABELS, get_company_metrics, calculate_ratios,
-    get_quarterly_metrics, get_industry_sector, get_metric_explanation,
 )
 
 st.set_page_config(
