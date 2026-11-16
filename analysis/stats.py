@@ -419,3 +419,72 @@ def autoreg_stock_chart(ar_result, company_name="Company"):
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     return fig
+
+def explain_historical_anomalies(anomalies, metric_name, company_ratios, raw_metrics=None, ticker=None):
+    """
+    Generate fundamental decomposition + macro/filing context for each |z| > 2 anomaly year.
+    """
+    if not anomalies:
+        return []
+
+    macro_events = {
+        "2008": "Global Financial Crisis onset & credit freeze",
+        "2009": "Great Recession demand trough & industrial capex contraction",
+        "2014": "USD surge & global energy/industrial slowdown (Agilent Keysight spin-off transition)",
+        "2015": "FX headwinds & commodity/industrial CapEx downturn",
+        "2020": "COVID-19 pandemic lockdowns & global supply-chain disruption",
+        "2021": "Post-pandemic stimulus rebound & supply bottlenecks",
+        "2022": "40-year inflation peak & aggressive Fed rate-hiking cycle",
+        "2023": "Tight monetary policy & post-COVID inventory destocking",
+    }
+
+    sorted_years = sorted(company_ratios.keys()) if company_ratios else []
+    explanations = []
+
+    for year_key, info in sorted(anomalies.items()):
+        yr_str = str(year_key)[:4]
+        val = info["value"]
+        z = info["z_score"]
+        direction = "surge above" if z > 0 else "drop below"
+
+        drivers = []
+        # 1. Cross-check underlying fundamental drivers in the same fiscal year
+        yr_ratios = company_ratios.get(year_key, {}) if company_ratios else {}
+        prev_idx = sorted_years.index(year_key) - 1 if year_key in sorted_years else -1
+        prev_ratios = company_ratios.get(sorted_years[prev_idx], {}) if prev_idx >= 0 else {}
+
+        rev_g = yr_ratios.get("revenue_growth_pct")
+        if rev_g is not None:
+            if rev_g < -5.0:
+                drivers.append(f"top-line revenue contracted {rev_g:.1f}% YoY (operating deleverage)")
+            elif rev_g > 15.0:
+                drivers.append(f"revenue expanded {rev_g:.1f}% YoY (scale leverage)")
+
+        gm = yr_ratios.get("gross_margin_pct")
+        prev_gm = prev_ratios.get("gross_margin_pct")
+        if gm is not None and prev_gm is not None and abs(gm - prev_gm) >= 2.0 and metric_name != "gross_margin_pct":
+            delta_gm = gm - prev_gm
+            drivers.append(f"gross margin shifted {delta_gm:+.1f} pp (to {gm:.1f}%)")
+
+        fcf = yr_ratios.get("free_cash_flow")
+        if fcf is not None and fcf < 0:
+            drivers.append("free cash flow turned negative")
+
+        # 2. Macro / structural context
+        macro_note = macro_events.get(yr_str, "Company-specific operational or accounting shift")
+
+        # 3. Direct SEC EDGAR 10-K search link for that fiscal year
+        sec_url = f"https://www.sec.gov/edgar/searchedgar/companysearch?q={ticker}" if ticker else None
+
+        driver_summary = "; ".join(drivers).capitalize() if drivers else f"Statistically significant {direction} historical mean ({val:.2f}%)"
+
+        explanations.append({
+            "Fiscal year": yr_str,
+            "Observed value": f"{val:.2f}%",
+            "Z-score": f"{z:+.2f}σ",
+            "Fundamental driver": driver_summary,
+            "Macro / industry context": macro_note,
+            "SEC filing": sec_url,
+        })
+
+    return explanations
