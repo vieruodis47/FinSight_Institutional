@@ -640,8 +640,6 @@ with tabs[0]:
         st.caption(f"**Sector classification:** `{target}` — **{target_genre}**")
 
     def render_company_profile(tk, full_name, stock_dict):
-
-    def render_company_profile(tk, full_name, stock_dict):
         s = stock_dict.get("stats", {})
         sector = s.get("sector") or "N/A"
         industry = s.get("industry") or "N/A"
