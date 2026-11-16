@@ -21,6 +21,8 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
+from analysis.stock_data import fetch_universe_stocks, compute_risk_metrics
+
 from analysis.metrics import (
     COMPANIES, get_company_metrics, calculate_ratios,
     get_quarterly_metrics, get_industry_sector, get_metric_explanation,
@@ -851,6 +853,43 @@ with tabs[2]:
             ]):
                 with col:
                     st.metric(label, fmt_number(returns.get(key), "%"))
+
+        st.markdown("")
+        section_header(
+            "04A / Risk & CAPM diagnostics",
+            "Volatility, Sharpe ratio & market sensitivity",
+            "Annualized metrics computed from daily closing returns; CAPM Beta benchmarked against S&P 500 (^GSPC) using a 4.25% risk-free rate.",
+        )
+        target_risk = compute_risk_metrics(target_stock.get("history"))
+        if target_risk:
+            r1, r2, r3, r4 = st.columns(4)
+            with r1:
+                beta_val = fmt_number(target_risk["beta"], "x") if target_risk["beta"] is not None else "N/A"
+                alpha_str = f"Jensen's α: {fmt_number(target_risk['jensen_alpha_pct'], '%')}" if target_risk["jensen_alpha_pct"] is not None else "vs. S&P 500"
+                card(f"CAPM Beta · {target}", beta_val, alpha_str)
+            with r2:
+                card(f"Annualized volatility · {target}", fmt_number(target_risk["ann_volatility_pct"], "%"), f"Ann. return: {fmt_number(target_risk['ann_return_pct'], '%')}")
+            with r3:
+                sharpe_val = fmt_number(target_risk["sharpe_ratio"], "") if target_risk["sharpe_ratio"] is not None else "N/A"
+                card(f"Sharpe ratio · {target}", sharpe_val, "Rf = 4.25% annualized")
+            with r4:
+                card(f"Max drawdown · {target}", fmt_number(target_risk["max_drawdown_pct"], "%"), "Peak-to-trough decline")
+
+            if peer and stocks.get(peer):
+                peer_risk = compute_risk_metrics(stocks[peer].get("history"))
+                if peer_risk:
+                    pr1, pr2, pr3, pr4 = st.columns(4)
+                    with pr1:
+                        p_beta = fmt_number(peer_risk["beta"], "x") if peer_risk["beta"] is not None else "N/A"
+                        p_alpha = f"Jensen's α: {fmt_number(peer_risk['jensen_alpha_pct'], '%')}" if peer_risk["jensen_alpha_pct"] is not None else "vs. S&P 500"
+                        card(f"CAPM Beta · {peer}", p_beta, p_alpha)
+                    with pr2:
+                        card(f"Annualized volatility · {peer}", fmt_number(peer_risk["ann_volatility_pct"], "%"), f"Ann. return: {fmt_number(peer_risk['ann_return_pct'], '%')}")
+                    with pr3:
+                        p_sharpe = fmt_number(peer_risk["sharpe_ratio"], "") if peer_risk["sharpe_ratio"] is not None else "N/A"
+                        card(f"Sharpe ratio · {peer}", p_sharpe, "Rf = 4.25% annualized")
+                    with pr4:
+                        card(f"Max drawdown · {peer}", fmt_number(peer_risk["max_drawdown_pct"], "%"), "Peak-to-trough decline")
 
         st.markdown('<div class="fs-divider"></div>', unsafe_allow_html=True)
         section_header(
