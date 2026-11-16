@@ -1067,40 +1067,78 @@ with tabs[3]:
 # 05 Research Q&A
 # ---------------------------------------------------------------------
 with tabs[4]:
-    section_header("07 / Research desk", "Structured financial Q&A",
-                   "Answers are grounded in the loaded SEC-derived annual metrics. This interface does not claim to retrieve filing text or provide a live RAG answer.")
-    query = st.text_input("Ask about profitability, growth, leverage, liquidity or inventory", placeholder="e.g. What is the latest gross margin?")
-    if query:
-        q = query.lower()
-        mapping = {
-            "gross margin": "gross_margin_pct",
-            "operating margin": "operating_margin_pct",
-            "net margin": "net_margin_pct",
-            "revenue growth": "revenue_growth_pct",
-            "gross profit growth": "gross_profit_growth_pct",
-            "inventory turnover": "inventory_turnover",
-            "inventory days": "days_inventory_outstanding",
-            "days inventory": "days_inventory_outstanding",
-            "debt to equity": "debt_to_equity",
-            "debt/equity": "debt_to_equity",
-            "current ratio": "current_ratio",
-            "free cash flow": "free_cash_flow",
-            "operating cash flow": "operating_cash_flow",
-        }
-        selected = next((key for phrase, key in mapping.items() if phrase in q), None)
-        if selected:
-            value = latest_value(target_ratios, selected)
-            explanation = get_metric_explanation(selected)
-            st.markdown('<div class="fs-panel">', unsafe_allow_html=True)
-            st.markdown(f"#### {explanation.get('label', selected)} · {target}")
-            st.markdown(f"### {fmt_money(value) if selected in ['free_cash_flow', 'operating_cash_flow'] else fmt_number(value, '%' if selected.endswith('_pct') else 'x' if selected in ['inventory_turnover', 'debt_to_equity', 'current_ratio'] else '')}")
-            st.write(explanation.get("explanation", ""))
-            st.caption(f"Source: SEC EDGAR/XBRL-derived annual metrics · FY {target_year or '—'}")
-            st.markdown("</div>", unsafe_allow_html=True)
-        elif "revenue" in q:
-            st.info(f"Latest reported revenue for {target}: {fmt_money(revenue, True)} (FY {target_year or '—'}).")
-        else:
-            st.warning("I couldn't map that question to a metric in the current structured dataset. Try a metric such as gross margin, revenue growth, inventory turnover, debt-to-equity or free cash flow.")
+    section_header(
+        "07 / Research desk",
+        "Structured financial Q&A & quantitative synthesis",
+        "Grounded in loaded SEC XBRL fundamentals, peer spreads, CAPM risk diagnostics, and Monte Carlo simulations.",
+    )
+
+    if "qa_history" not in st.session_state:
+        st.session_state.qa_history = []
+
+    preset_prompts = [
+        f"Compare {target} vs. {peer} margins & ROE" if peer else f"Summarize {target} profitability & margin stack",
+        f"Analyze {target} CAPM Beta, Sharpe & Monte Carlo tail risk",
+        f"Evaluate {target} balance sheet leverage, liquidity & FCF",
+        f"Explain {target} revenue growth & historical anomalies",
+    ]
+
+    st.caption("Quick research prompts:")
+    q_cols = st.columns(len(preset_prompts))
+    triggered_prompt = None
+    for idx, (col, prompt_text) in enumerate(zip(q_cols, preset_prompts)):
+        with col:
+            if st.button(prompt_text, key=f"qa_preset_{idx}", use_container_width=True):
+                triggered_prompt = prompt_text
+
+    with st.form("research_qa_form", clear_on_submit=True):
+        in_col, btn_col = st.columns([5, 1])
+        with in_col:
+            custom_q = st.text_input(
+                "Ask a custom research question",
+                placeholder=f"e.g., How does {target}'s operating margin compare to {peer or 'its historical baseline'}?",
+                label_visibility="collapsed",
+            )
+        with btn_col:
+            submitted = st.form_submit_button("Run query", type="primary", use_container_width=True)
+
+    active_query = triggered_prompt or (custom_q.strip() if submitted and custom_q.strip() else None)
+    if active_query:
+        t_risk = compute_risk_metrics(target_stock.get("history")) if (stocks and target in stocks) else None
+        t_gbm = run_stock_price_monte_carlo(target_stock.get("history"), horizon_days=252, simulations=3000) if (stocks and target in stocks) else None
+        t_sec = classify_company_sector(target, (stocks or {}).get(target, {}).get("stats", {}).get("sector"))
+
+        ans = answer_research_question(
+            question=active_query,
+            target=target,
+            target_ratios=target_ratios,
+            target_raw=target_raw,
+            peer=peer,
+            peer_ratios=peer_ratios if peer else None,
+            target_risk=t_risk,
+            gbm_res=t_gbm,
+            sector_label=t_sec,
+        )
+        if ans:
+            st.session_state.qa_history.insert(0, ans)
+
+    if st.session_state.qa_history:
+        top_bar_l, top_bar_r = st.columns([5, 1])
+        with top_bar_r:
+            if st.button("Clear log", key="clear_qa_log", use_container_width=True):
+                st.session_state.qa_history = []
+                st.rerun()
+
+        for entry in st.session_state.qa_history:
+            with st.container(border=True):
+                st.caption(f"QUERY · {entry['question']}")
+                st.markdown(f"#### {entry['headline']}")
+                for b in entry["bullets"]:
+                    st.markdown(f"- {b}")
+                if entry.get("table"):
+                    st.dataframe(pd.DataFrame(entry["table"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("Click any quick research prompt above or submit a custom question to generate a multi-metric research brief.")
 
 # ---------------------------------------------------------------------
 # 06 Data and export
