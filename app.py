@@ -449,20 +449,21 @@ with st.sidebar:
         st.error("No SEC company identifiers are configured in analysis/metrics.py.")
         st.stop()
     sector_options = ["All Sectors"] + list(SECTOR_TAXONOMY.keys())
-selected_sector = st.selectbox("Sector / Genre filter", sector_options, index=0, key="sector_filter")
+    selected_sector = st.selectbox("Sector / Genre filter", sector_options, index=0, key="sector_filter")
 
-if selected_sector == "All Sectors":
-    filtered_tickers = list(COMPANIES.keys())
-else:
-    sector_members = set(SECTOR_TAXONOMY[selected_sector])
-    filtered_tickers = [t for t in COMPANIES.keys() if t in sector_members] or list(COMPANIES.keys())
-    
+    if selected_sector == "All Sectors":
+        filtered_tickers = available_tickers
+    else:
+        sector_members = set(SECTOR_TAXONOMY[selected_sector])
+        filtered_tickers = [t for t in available_tickers if t in sector_members] or available_tickers
+
     target = st.selectbox(
-    "Target company",
-    available_tickers,
-    index=0,
-    format_func=lambda t: COMPANY_LABELS.get(t, t),
+        "Target company",
+        filtered_tickers,
+        index=0,
+        format_func=lambda t: COMPANY_LABELS.get(t, t),
     )
+    
     peer_options = ["None"] + [ticker for ticker in available_tickers if ticker != target]
     peer_choice = st.selectbox(
         "Comparison peer",
