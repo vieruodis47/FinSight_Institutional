@@ -483,3 +483,146 @@ def explain_historical_anomalies(anomalies, metric_name, company_ratios, raw_met
         })
 
     return explanations
+
+def run_stock_price_monte_carlo(history_df, horizon_days=252, simulations=3000, seed=42):
+    """
+    Simulate forward stock price paths via Geometric Brownian Motion (GBM):
+        S_t = S_0 * exp((mu - 0.5 * sigma^2) * dt + sigma * sqrt(dt) * Z)
+    Returns 10th/50th/90th percentile paths, terminal distribution stats, and 95% VaR.
+    """
+    if history_df is None or history_df.empty or "Close" not in history_df.columns:
+        return None
+
+    close = history_df["Close"].dropna()
+    if len(close) < 30:
+        return None
+
+    log_ret = np.log(close / close.shift(1)).dropna()
+    mu_daily = float(log_ret.mean())
+    sigma_daily = float(log_ret.std())
+    s0 = float(close.iloc[-1])
+
+    rng = np.random.default_rng(seed)
+    shocks = rng.normal(
+        loc=(mu_daily - 0.5 * sigma_daily ** 2),
+        scale=sigma_daily,
+        size=(simulations, horizon_days),
+    )
+    price_paths = s0 * np.exp(np.cumsum(shocks, axis=1))
+    # Prepend day 0 (current price)
+    price_paths = np.column_stack([np.full(simulations, s0), price_paths])
+
+    p10 = np.percentile(price_paths, 10, axis=0)
+    p25 = np.percentile(price_paths, 25, axis=0)
+    p50 = np.percentile(price_paths, 50, axis=0)
+    p75 = np.percentile(price_paths, 75, axis=0)
+    p90 = np.percentile(price_paths, 90, axis=0)
+
+    terminal_prices = price_paths[:, -1]
+    terminal_returns = (terminal_prices / s0) - 1.0
+    prob_gain = float((terminal_prices > s0).mean() * 100.0)
+    var_95_pct = float(np.percentile(terminal_returns, 5) * 100.0)
+
+    last_date = pd.Timestamp(close.index[-1])
+    if getattr(last_date, "tz", None) is not None:
+        last_date = last_date.tz_localize(None)
+    future_dates = pd.bdate_range(start=last_date, periods=horizon_days + 1)
+
+    # Keep a handful of sample paths for subtle background visual texture
+    sample_paths = price_paths[:15]
+
+    return {
+        "dates": [d.strftime("%Y-%m-%d") for d in future_dates],
+        "current_price": round(s0, 2),
+        "p10": np.round(p10, 2).tolist(),
+        "p25": np.round(p25, 2).tolist(),
+        "p50": np.round(p50, 2).tolist(),
+        "p75": np.round(p75, 2).tolist(),
+        "p90": np.round(p90, 2).tolist(),
+        "sample_paths": np.round(sample_paths, 2).tolist(),
+        "bear_target": round(float(p10[-1]), 2),
+        "median_target": round(float(p50[-1]), 2),
+        "bull_target": round(float(p90[-1]), 2),
+        "prob_gain_pct": round(prob_gain, 1),
+        "var_95_pct": round(var_95_pct, 2),
+        "ann_vol_pct": round(sigma_daily * np.sqrt(252) * 100, 2),
+        "simulations": simulations,
+        "horizon_days": horizon_days,
+    }
+
+
+def stock_monte_carlo_chart(mc_res, company_name):
+    """Plot a 252-day Geometric Brownian Motion fan chart with IQR, 10-90% bounds, and sample walks."""
+    import plotly.graph_objects as go
+
+    dates = mc_res["dates"]
+    fig = go.Figure()
+
+    # Subtle background sample paths
+    for path in mc_res.get("sample_paths", []):
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=path,
+            mode="lines",
+            line=dict(color="rgba(43, 92, 143, 0.12)", width=1),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+    # 10th - 90th percentile outer cone
+    fig.add_trace(go.Scatter(
+        x=dates + dates[::-1],
+        y=mc_res["p90"] + mc_res["p10"][::-1],
+        fill="toself",
+        fillcolor="rgba(43, 92, 143, 0.10)",
+        line=dict(color="rgba(255,255,255,0)"),
+        name="10th–90th Percentile Range",
+        hoverinfo="skip",
+    ))
+
+    # 25th - 75th interquartile inner cone
+    fig.add_trace(go.Scatter(
+        x=dates + dates[::-1],
+        y=mc_res["p75"] + mc_res["p25"][::-1],
+        fill="toself",
+        fillcolor="rgba(43, 92, 143, 0.22)",
+        line=dict(color="rgba(255,255,255,0)"),
+        name="25th–75th Interquartile Range",
+        hoverinfo="skip",
+    ))
+
+    # Median expected path (P50)
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=mc_res["p50"],
+        mode="lines",
+        name=f"Median Path (${mc_res['median_target']:.2f})",
+        line=dict(color="#1E3A5F", width=2.8),
+    ))
+
+    # Bull (P90) & Bear (P10) boundary lines
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=mc_res["p90"],
+        mode="lines",
+        name=f"90th Pct Bull (${mc_res['bull_target']:.2f})",
+        line=dict(color="#1F7A54", width=1.5, dash="dash"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=mc_res["p10"],
+        mode="lines",
+        name=f"10th Pct Bear (${mc_res['bear_target']:.2f})",
+        line=dict(color="#B43C3C", width=1.5, dash="dash"),
+    ))
+
+    fig.update_layout(
+        title=f"{company_name} — {mc_res['horizon_days']}-Day Geometric Brownian Motion Simulation ({mc_res['simulations']:,} Paths)",
+        xaxis=dict(title="Forward Trading Horizon", nticks=7, automargin=True),
+        yaxis=dict(title="Simulated Share Price ($)", tickprefix="$", automargin=True),
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="left", x=0, font=dict(size=10)),
+        margin=dict(l=55, r=20, t=65, b=85),
+        template="plotly_white",
+        hovermode="x unified",
+    )
+    return fig
