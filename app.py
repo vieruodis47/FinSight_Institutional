@@ -934,6 +934,36 @@ with tabs[2]:
         else:
             st.info("Not enough historical trading days to fit the AutoReg model with the selected lag order.")
 
+        st.markdown('<div class="fs-divider"></div>', unsafe_allow_html=True)
+        section_header(
+            "04C / Stochastic price simulation",
+            "Geometric Brownian Motion (3,000 Monte Carlo Paths)",
+            "Simulates forward daily log-normal price paths calibrated to historical drift and annualized volatility. Used for tail-risk & VaR diagnostics, not price targets.",
+        )
+        mc_horizon = st.selectbox(
+            "Simulation horizon",
+            [63, 126, 252],
+            index=2,
+            format_func=lambda d: {63: "3 Months (63 trading days)", 126: "6 Months (126 trading days)", 252: "1 Year (252 trading days)"}[d],
+            key="gbm_horizon",
+        )
+        gbm_res = run_stock_price_monte_carlo(target_stock.get("history"), horizon_days=mc_horizon, simulations=3000)
+        if gbm_res:
+            g1, g2, g3, g4 = st.columns(4)
+            with g1:
+                card("Bear case (10th pct)", fmt_money(gbm_res["bear_target"]), f"{((gbm_res['bear_target'] / gbm_res['current_price']) - 1) * 100:+.1f}% vs. spot")
+            with g2:
+                card("Median path (50th pct)", fmt_money(gbm_res["median_target"]), f"{((gbm_res['median_target'] / gbm_res['current_price']) - 1) * 100:+.1f}% vs. spot")
+            with g3:
+                card("Bull case (90th pct)", fmt_money(gbm_res["bull_target"]), f"{((gbm_res['bull_target'] / gbm_res['current_price']) - 1) * 100:+.1f}% vs. spot")
+            with g4:
+                card("Prob. of positive return", f"{gbm_res['prob_gain_pct']:.1f}%", f"95% Horizon VaR: {gbm_res['var_95_pct']:+.1f}%")
+
+            gbm_fig = stock_monte_carlo_chart(gbm_res, company_name=target)
+            styled_chart(gbm_fig, 430)
+        else:
+            st.info("At least 30 trading days of closing price history are required for Monte Carlo simulation.")
+
 # ---------------------------------------------------------------------
 # 04 Quantitative forecasts
 # ---------------------------------------------------------------------
