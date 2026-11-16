@@ -1060,13 +1060,6 @@ with tabs[3]:
             )
         else:
             st.caption("No historical observations crossed the current |z-score| > 2 anomaly threshold.")
-
-        mc_data = run_monte_carlo_forecast(series, steps=3, simulations=3000)
-        if mc_data:
-            st.markdown("#### Monte Carlo scenario range")
-            mc_fig = monte_carlo_forecast_chart(mc_data, forecast_metric, target)
-            styled_chart(mc_fig, 410)
-            st.caption("Shaded range shows the simulated 10th–90th percentile path using historical log changes. This is a scenario distribution, not a calibrated forecast interval.")
     else:
         st.info("Not enough annual data to construct a statistical forecast for this metric.")
 
