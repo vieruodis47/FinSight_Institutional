@@ -448,7 +448,6 @@ def explain_historical_anomalies(anomalies, metric_name, company_ratios, raw_met
         direction = "surge above" if z > 0 else "drop below"
 
         drivers = []
-        # 1. Cross-check underlying fundamental drivers in the same fiscal year
         yr_ratios = company_ratios.get(year_key, {}) if company_ratios else {}
         prev_idx = sorted_years.index(year_key) - 1 if year_key in sorted_years else -1
         prev_ratios = company_ratios.get(sorted_years[prev_idx], {}) if prev_idx >= 0 else {}
@@ -470,12 +469,8 @@ def explain_historical_anomalies(anomalies, metric_name, company_ratios, raw_met
         if fcf is not None and fcf < 0:
             drivers.append("free cash flow turned negative")
 
-        # 2. Macro / structural context
         macro_note = macro_events.get(yr_str, "Company-specific operational or accounting shift")
-
-        # 3. Direct SEC EDGAR 10-K search link for that fiscal year
         sec_url = f"https://www.sec.gov/edgar/searchedgar/companysearch?q={ticker}" if ticker else None
-
         driver_summary = "; ".join(drivers).capitalize() if drivers else f"Statistically significant {direction} historical mean ({val:.2f}%)"
 
         explanations.append({
