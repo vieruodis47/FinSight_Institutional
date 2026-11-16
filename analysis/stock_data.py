@@ -86,3 +86,59 @@ def get_all_stock_data(tickers=None, period="2y"):
         except Exception as exc:
             print(f"[FinSight] Market data unavailable for {ticker}: {exc}")
     return results
+
+def compute_risk_metrics(history_df, risk_free_rate=0.0425):
+    """
+    Compute annualized volatility, Sharpe ratio, max drawdown, and CAPM Beta
+    vs. S&P 500 (^GSPC) over the active price history window.
+    """
+    if history_df is None or history_df.empty or "Close" not in history_df.columns:
+        return None
+
+    close = history_df["Close"].dropna()
+    if len(close) < 20:
+        return None
+
+    daily_ret = close.pct_change().dropna()
+    ann_vol = float(daily_ret.std() * np.sqrt(252))
+    ann_ret = float((close.iloc[-1] / close.iloc[0]) ** (252 / len(daily_ret)) - 1)
+    sharpe = float((ann_ret - risk_free_rate) / ann_vol) if ann_vol > 1e-8 else None
+
+    rolling_max = close.cummax()
+    max_drawdown = float(((close - rolling_max) / rolling_max).min())
+
+    # CAPM Beta vs. S&P 500 (^GSPC)
+    beta = None
+    alpha = None
+    try:
+        start_dt = close.index.min().strftime("%Y-%m-%d")
+        end_dt = (close.index.max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        spy = yf.download("^GSPC", start=start_dt, end=end_dt, progress=False, auto_adjust=True)
+        if not spy.empty and "Close" in spy.columns:
+            mkt_close = spy["Close"].squeeze().dropna()
+            # Normalize timezone awareness before joining
+            if getattr(daily_ret.index, "tz", None) is not None:
+                daily_ret.index = daily_ret.index.tz_localize(None)
+            if getattr(mkt_close.index, "tz", None) is not None:
+                mkt_close.index = mkt_close.index.tz_localize(None)
+
+            mkt_ret = mkt_close.pct_change().dropna()
+            aligned = pd.concat([daily_ret.rename("asset"), mkt_ret.rename("mkt")], axis=1).dropna()
+            if len(aligned) >= 20:
+                cov = aligned["asset"].cov(aligned["mkt"])
+                var_m = aligned["mkt"].var()
+                if var_m > 1e-10:
+                    beta = float(cov / var_m)
+                    mkt_ann_ret = float((mkt_close.iloc[-1] / mkt_close.iloc[0]) ** (252 / len(mkt_ret)) - 1)
+                    alpha = float(ann_ret - (risk_free_rate + beta * (mkt_ann_ret - risk_free_rate)))
+    except Exception:
+        beta = None
+
+    return {
+        "ann_volatility_pct": round(ann_vol * 100, 2),
+        "ann_return_pct": round(ann_ret * 100, 2),
+        "sharpe_ratio": round(sharpe, 2) if sharpe is not None else None,
+        "max_drawdown_pct": round(max_drawdown * 100, 2),
+        "beta": round(beta, 2) if beta is not None else None,
+        "jensen_alpha_pct": round(alpha * 100, 2) if alpha is not None else None,
+    }
