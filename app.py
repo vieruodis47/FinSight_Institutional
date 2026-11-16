@@ -483,6 +483,32 @@ else:
         unsafe_allow_html=True,
     )
 
+sector_options = ["All Sectors"] + list(SECTOR_TAXONOMY.keys())
+    selected_sector = st.selectbox("Sector / Genre filter", sector_options, index=0, key="sector_filter")
+
+    if selected_sector == "All Sectors":
+        filtered_tickers = list(COMPANIES.keys())
+    else:
+        sector_members = set(SECTOR_TAXONOMY[selected_sector])
+        filtered_tickers = [t for t in COMPANIES.keys() if t in sector_members] or list(COMPANIES.keys())
+
+    target = st.selectbox(
+        "Target company",
+        filtered_tickers,
+        format_func=lambda t: COMPANY_LABELS.get(t, f"{t} — {COMPANIES.get(t, t)}"),
+        key="target_ticker",
+    )
+
+    peer_options = ["None"] + [t for t in COMPANIES.keys() if t != target]
+    peer_choice = st.selectbox(
+        "Comparison peer",
+        peer_options,
+        index=1 if len(peer_options) > 1 else 0,
+        format_func=lambda t: "None (Standalone)" if t == "None" else COMPANY_LABELS.get(t, f"{t} — {COMPANIES.get(t, t)}"),
+        key="peer_ticker",
+    )
+    peer = None if peer_choice == "None" else peer_choice
+
 selected_tickers = tuple([target] + ([peer] if peer else []))
 if run_clicked:
     raw_data, ratio_data, errors = {}, {}, []
